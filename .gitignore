@@ -12,7 +12,7 @@ venv/
 .env
 .env.free
 .env.paid
-
+.env.local
 # Data
 data/
 
