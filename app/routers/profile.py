@@ -35,10 +35,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
-# ── Shared dependency ─────────────────────────────────────────────────────────
+from collections.abc import AsyncGenerator
 
-def get_cache() -> ContextCache:
-    return ContextCache()
+async def get_cache() -> AsyncGenerator[ContextCache, None]:
+    cache = ContextCache()
+    try:
+        yield cache
+    finally:
+        await cache.close()
 
 
 # ── Request body ──────────────────────────────────────────────────────────────

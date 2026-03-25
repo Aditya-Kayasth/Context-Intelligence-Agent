@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.routers import context, profile
+from app.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +35,7 @@ app.include_router(context.router)
 
 @app.get("/health", tags=["ops"], summary="Health check")
 async def health() -> dict:
-    return {"status": "healthy"}
+    return {"status": "healthy", "llm_provider": "grok" if getattr(settings, "xai_api_key", "") else settings.llm_provider}
 
 # ── Request timing middleware ─────────────────────────────────────────────────
 

@@ -15,13 +15,15 @@ class Settings(BaseSettings):
     app_port: int = 8000
 
     # ── LLM ──────────────────────────────────────────────────────────────────
-    llm_provider: Literal["ollama", "openai", "anthropic", "groq"] = "ollama"
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3"
+    llm_provider: Literal["ollama", "openai", "anthropic", "groq", "grok"] = "ollama"
+    ollama_base_url: str = ""
+    ollama_model: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
-    groq_api_key: str = ""
-    groq_model: str = "llama-3.1-70b-versatile"
+    groq_api_key: str = "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"
+    xai_api_key: str = ""
+    groq_model: str = "llama-3.1-8b-instant"
+
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = "duckdb:///./data/local.duckdb"

@@ -15,3 +15,8 @@ duckdb
 httpx
 pydantic-settings
 python-dotenv
+langchain-core
+langchain-groq
+langchain-openai
+langchain-community
+langchain-anthropic

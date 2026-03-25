@@ -25,8 +25,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["context"])
 
 
-def get_cache() -> ContextCache:
-    return ContextCache()
+from collections.abc import AsyncGenerator
+
+async def get_cache() -> AsyncGenerator[ContextCache, None]:
+    cache = ContextCache()
+    try:
+        yield cache
+    finally:
+        await cache.close()
 
 
 # ── GET /context/{context_id} ─────────────────────────────────────────────────
