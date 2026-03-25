@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     ollama_model: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
-    groq_api_key: str = "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"
+    groq_api_key: str = ""
     xai_api_key: str = ""
     groq_model: str = "llama-3.1-8b-instant"
 
