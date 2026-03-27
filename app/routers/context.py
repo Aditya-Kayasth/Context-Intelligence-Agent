@@ -1,16 +1,6 @@
-"""
-Context router — two endpoints:
-
-  GET  /context/{context_id}    Fetch a cached ContextObject.
-  POST /refresh/{context_id}    Re-run the pipeline and overwrite the cache entry.
-
-The refresh endpoint requires the original DataSource config to be re-submitted
-in the request body because the cache stores only the result, not the source
-descriptor.
-"""
+"""Context router — cache retrieval and pipeline refresh endpoints."""
 from __future__ import annotations
 
-import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,21 +11,13 @@ from app.models.context import ContextObject
 from app.models.sources import DataSource
 from app.utils.pipeline import run_pipeline
 
-logger = logging.getLogger(__name__)
 router = APIRouter(tags=["context"])
 
 
-from collections.abc import AsyncGenerator
+def get_cache() -> ContextCache:
+    """Dependency that provides a ContextCache instance."""
+    return ContextCache()
 
-async def get_cache() -> AsyncGenerator[ContextCache, None]:
-    cache = ContextCache()
-    try:
-        yield cache
-    finally:
-        await cache.close()
-
-
-# ── GET /context/{context_id} ─────────────────────────────────────────────────
 
 @router.get(
     "/context/{context_id}",
@@ -46,6 +28,7 @@ async def get_context(
     context_id: str,
     cache: Annotated[ContextCache, Depends(get_cache)],
 ) -> ContextObject:
+    """Return the cached ContextObject for context_id, or 404 if not found."""
     context = await cache.get_context(context_id)
     if context is None:
         raise HTTPException(
@@ -55,9 +38,9 @@ async def get_context(
     return context
 
 
-# ── POST /refresh/{context_id} ────────────────────────────────────────────────
-
 class RefreshRequest(BaseModel):
+    """Request body for the refresh endpoint."""
+
     source: DataSource = Field(..., discriminator="type")
 
 
@@ -67,23 +50,15 @@ class RefreshRequest(BaseModel):
     summary="Re-profile a data source and refresh the cache",
 )
 async def refresh_context(
-    context_id: str,
+    context_id: str,  # pylint: disable=unused-argument  # kept for URL symmetry
     body: RefreshRequest,
     cache: Annotated[ContextCache, Depends(get_cache)],
 ) -> ContextObject:
-    """
-    Re-runs the full pipeline for the given source, overwrites the cached entry,
-    and returns the updated ContextObject.
-
-    The context_id in the path is informational; the canonical key is always
-    re-derived from the source descriptor so it stays consistent.
-    """
+    """Re-run the full pipeline for the given source and overwrite the cache entry."""
     context: ContextObject | None = None
     async for _stage, _pct, payload in run_pipeline(body.source, cache):
         if payload is not None:
             context = payload  # type: ignore[assignment]
-
     if context is None:
         raise HTTPException(status_code=500, detail="Pipeline completed without a result.")
-
     return context

@@ -54,7 +54,9 @@ class LLMParseError(Exception):
     """Raised when the LLM response cannot be parsed as JSON."""
 
 
-class SemanticEnricher:
+class SemanticEnricher:  # pylint: disable=too-few-public-methods
+    """Calls the configured LLM to assign semantic types and suggest analyses."""
+
     def __init__(self) -> None:
         self._provider = get_llm_provider()
 

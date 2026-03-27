@@ -1,26 +1,10 @@
-"""
-Profile router — two endpoints:
-
-  POST /profile         Sync: run full pipeline, return ContextObject.
-  POST /profile/stream  SSE:  stream pipeline progress events, final context_id.
-
-SSE format
-----------
-Each event is a UTF-8 string:
-
-  data: {"stage": "<name>", "pct": <0-100>}\n\n          (progress)
-  data: {"stage": "complete", "context_id": "<key>"}\n\n  (final)
-  data: {"stage": "error", "message": "<text>"}\n\n        (on failure)
-
-The generator is an async def that yields strings.  FastAPI's StreamingResponse
-wraps it in a chunked HTTP/1.1 response with Content-Type: text/event-stream.
-The client can consume it with EventSource or any SSE-capable HTTP client.
-"""
+"""Profile router — sync and SSE-streaming pipeline endpoints."""
 from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -35,23 +19,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
-from collections.abc import AsyncGenerator
+def get_cache() -> ContextCache:
+    """Dependency that provides a ContextCache instance."""
+    return ContextCache()
 
-async def get_cache() -> AsyncGenerator[ContextCache, None]:
-    cache = ContextCache()
-    try:
-        yield cache
-    finally:
-        await cache.close()
-
-
-# ── Request body ──────────────────────────────────────────────────────────────
 
 class ProfileRequest(BaseModel):
+    """Request body for profile endpoints."""
+
     source: DataSource = Field(..., discriminator="type")
 
-
-# ── POST /profile  (sync) ─────────────────────────────────────────────────────
 
 @router.post("", response_model=ContextObject, summary="Profile a data source")
 async def profile_source(
@@ -68,31 +45,21 @@ async def profile_source(
     return context
 
 
-# ── POST /profile/stream  (SSE) ───────────────────────────────────────────────
-
 @router.post("/stream", summary="Profile a data source with SSE progress stream")
 async def profile_source_stream(body: ProfileRequest) -> StreamingResponse:
-    """
-    Stream pipeline progress as Server-Sent Events.
-    Connect with EventSource or: curl -N -X POST .../profile/stream -d '...'
-    """
+    """Stream pipeline progress as Server-Sent Events."""
     return StreamingResponse(
         _sse_generator(body.source),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",   # disable nginx buffering
+            "X-Accel-Buffering": "no",
         },
     )
 
 
 async def _sse_generator(source: DataSource) -> AsyncGenerator[str, None]:
-    """
-    Async generator that drives run_pipeline and formats each step as an SSE frame.
-
-    SSE wire format requires every message to end with two newlines (\n\n).
-    We use the `data:` field only (no `event:` or `id:` fields needed here).
-    """
+    """Yield SSE-formatted strings as each pipeline stage completes."""
     cache = ContextCache()
     try:
         async for stage, pct, payload in run_pipeline(source, cache):
@@ -102,9 +69,8 @@ async def _sse_generator(source: DataSource) -> AsyncGenerator[str, None]:
             else:
                 event = json.dumps({"stage": stage, "pct": pct})
             yield f"data: {event}\n\n"
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception("SSE pipeline error")
-        error_event = json.dumps({"stage": "error", "message": str(exc)})
-        yield f"data: {error_event}\n\n"
+        yield f"data: {json.dumps({'stage': 'error', 'message': str(exc)})}\n\n"
     finally:
         await cache.close()

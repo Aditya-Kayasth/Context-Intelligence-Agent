@@ -1,13 +1,7 @@
-"""
-Abstract base connector.
-
-Every concrete connector must:
-  1. Accept the matching DataSource model in __init__.
-  2. Implement connect() to set up any client/session.
-  3. Implement sample() to return a sampled pandas DataFrame via the smart sampler.
-"""
+"""Abstract base connector — all concrete connectors inherit from BaseConnector."""
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -25,6 +19,8 @@ class ConnectorError(Exception):
 
 
 class BaseConnector(ABC):
+    """Contract that every data-source connector must satisfy."""
+
     def __init__(self, source: DataSource) -> None:
         self.source = source
 
@@ -34,7 +30,9 @@ class BaseConnector(ABC):
 
     @abstractmethod
     async def sample(self, target_col: Optional[str] = None) -> pd.DataFrame:
-        """
-        Return a sampled DataFrame using the smart sampler.
-        Implementations must call connect() before reading data.
-        """
+        """Return a sampled DataFrame using the smart sampler."""
+
+    def _assert_file_exists(self, path: str, source_type: str = "local_file") -> None:
+        """Raise ConnectorError if path does not exist on disk."""
+        if not os.path.exists(path):
+            raise ConnectorError(source_type, f"File not found: {path}")

@@ -11,7 +11,6 @@ Token-budget enforcement:
 """
 from __future__ import annotations
 
-import json
 from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
@@ -25,6 +24,7 @@ def _char_budget(max_tokens: int = _DEFAULT_TOKEN_BUDGET) -> int:
 
 
 class ColumnProfile(BaseModel):
+    """Statistical and semantic profile for a single DataFrame column."""
     name: str
     dtype: str
     null_count: int = 0
@@ -52,6 +52,7 @@ class ColumnProfile(BaseModel):
 
 
 class ContextObject(BaseModel):
+    """Enriched context payload returned to downstream agents."""
     source_id: str
     source_type: str
     row_count: int

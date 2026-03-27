@@ -1,30 +1,24 @@
-"""
-Connector factory — maps a DataSource discriminator to the right connector class.
-"""
+"""Connector factory — maps a DataSource type to the correct connector class."""
 from __future__ import annotations
 
 from app.connectors.base import BaseConnector
-from app.models.sources import DataSource
+from app.connectors.csv_connector import CSVConnector
+from app.connectors.parquet_connector import ParquetConnector
+from app.connectors.postgres_connector import PostgresConnector
+from app.connectors.s3_connector import S3Connector
+from app.models.sources import DataSource, DatabaseSource, LocalFileSource, S3Source
 
 
 def get_connector(source: DataSource) -> BaseConnector:
-    source_type = source.type  # type: ignore[union-attr]
-
-    if source_type == "local_file":
-        from app.models.sources import LocalFileSource
-        assert isinstance(source, LocalFileSource)
+    """Return the appropriate connector instance for the given DataSource."""
+    if isinstance(source, LocalFileSource):
         if source.format == "parquet":
-            from app.connectors.parquet_connector import ParquetConnector
             return ParquetConnector(source)
-        from app.connectors.csv_connector import CSVConnector
         return CSVConnector(source)
-
-    if source_type == "s3":
-        from app.connectors.s3_connector import S3Connector
-        return S3Connector(source)  # type: ignore[arg-type]
-
-    if source_type == "database":
-        from app.connectors.postgres_connector import PostgresConnector
-        return PostgresConnector(source)  # type: ignore[arg-type]
-
-    raise NotImplementedError(f"No connector implemented for source type: {source_type!r}")
+    if isinstance(source, S3Source):
+        return S3Connector(source)
+    if isinstance(source, DatabaseSource):
+        return PostgresConnector(source)
+    raise NotImplementedError(
+        f"No connector implemented for source type: {source.type!r}"  # type: ignore[union-attr]
+    )

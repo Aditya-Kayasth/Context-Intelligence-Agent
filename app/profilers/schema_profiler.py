@@ -46,7 +46,7 @@ _SAMPLE_N = 5               # random sample values per column
 
 # ── Public class ──────────────────────────────────────────────────────────────
 
-class DataProfiler:
+class DataProfiler:  # pylint: disable=too-few-public-methods
     """Profile a sampled DataFrame and return a list of ColumnProfile objects."""
 
     def __init__(self, df: pd.DataFrame) -> None:
@@ -175,20 +175,22 @@ def _top_values(non_null: pd.Series, n: int) -> list[dict]:
 
 
 def _avg_length(non_null: pd.Series) -> Optional[float]:
+    """Return the mean string length of non-null values, or None on failure."""
     try:
         lengths = non_null.astype(str).str.len()
         return round(float(lengths.mean()), 2)
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
 def _date_range(non_null: pd.Series) -> Optional[dict[str, str]]:
+    """Return {"min": ..., "max": ...} for a datetime series, or None on failure."""
     try:
         return {
             "min": str(non_null.min()),
             "max": str(non_null.max()),
         }
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -205,7 +207,8 @@ def _detect_pattern(non_null: pd.Series) -> tuple[bool, Optional[str]]:
     n = len(str_series)
 
     for pattern_name, regex in _PATTERNS.items():
-        match_count = str_series.apply(lambda v: bool(regex.match(v))).sum()
+        # Capture regex in default arg to avoid cell-var-from-loop
+        match_count = str_series.apply(lambda v, r=regex: bool(r.match(v))).sum()
         if match_count / n >= _PATTERN_THRESHOLD:
             return True, pattern_name
 
