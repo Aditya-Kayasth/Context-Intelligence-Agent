@@ -43,6 +43,34 @@ _PATTERN_THRESHOLD = 0.80   # 80 % of non-null values must match
 _TOP_N = 5                  # top-N frequent values for categorical columns
 _SAMPLE_N = 5               # random sample values per column
 
+# ── PII / sensitive-column detection ─────────────────────────────────────────
+
+_REDACTED = ["[REDACTED_FOR_SECURITY]"]
+
+# Substrings that flag a column name as PII-sensitive (case-insensitive)
+_PII_NAME_KEYWORDS: frozenset[str] = frozenset({
+    "email", "mail",
+    "phone", "mobile", "cell",
+    "ssn", "social",
+    "password", "passwd", "secret", "token", "hash",
+    "credit", "card", "cvv", "iban", "account",
+    "name", "firstname", "lastname", "surname",
+    "address", "street", "postcode", "zipcode",
+    "dob", "birthdate", "birthday",
+    "ip", "ipaddr",
+    "passport", "license", "licence",
+    "salary", "income",
+    "gender", "race", "ethnicity", "religion",
+})
+
+# Regex-detected patterns that are inherently PII
+_PII_PATTERNS: frozenset[str] = frozenset({"email", "phone"})
+
+# LLM-assigned semantic types that are inherently PII
+_PII_SEMANTIC_TYPES: frozenset[str] = frozenset({
+    "email", "phone", "identifier", "url",
+})
+
 
 # ── Public class ──────────────────────────────────────────────────────────────
 
@@ -65,7 +93,9 @@ class DataProfiler:  # pylint: disable=too-few-public-methods
 
         for col_name in df.columns:
             series = df[col_name]
-            profiles.append(self._profile_column(series, total_rows))
+            col = self._profile_column(series, total_rows)
+            _redact_if_pii(col)
+            profiles.append(col)
 
         return profiles
 
@@ -136,6 +166,22 @@ class DataProfiler:  # pylint: disable=too-few-public-methods
 
 
 # ── Helper functions ──────────────────────────────────────────────────────────
+
+def _redact_if_pii(col: ColumnProfile) -> None:
+    """Overwrite sample_values with a redaction sentinel if the column is PII-sensitive.
+
+    Detection order (any match triggers redaction):
+      1. Column name contains a known PII keyword (case-insensitive substring match).
+      2. Regex pattern detector flagged the column as email or phone.
+      3. LLM-assigned semantic_type is in the PII semantic-type set.
+    """
+    col_lower = col.name.lower().replace("_", "").replace("-", "").replace(" ", "")
+    name_is_pii = any(kw in col_lower for kw in _PII_NAME_KEYWORDS)
+    pattern_is_pii = col.detected_pattern in _PII_PATTERNS
+    semantic_is_pii = col.semantic_type in _PII_SEMANTIC_TYPES
+
+    if name_is_pii or pattern_is_pii or semantic_is_pii:
+        col.sample_values = _REDACTED
 
 def _classify_cardinality(
     unique_count: int, non_null_count: int
