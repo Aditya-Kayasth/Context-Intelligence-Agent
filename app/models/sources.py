@@ -74,6 +74,15 @@ class APISource(BaseModel):
     body: Optional[dict] = None
 
 
+class AzureBlobSource(BaseModel):
+    """Source descriptor for an Azure Blob Storage blob."""
+
+    type: Literal["azure_blob"] = "azure_blob"
+    path: str  # URL to the blob
+    format: Literal["csv", "parquet", "json"] = "csv"
+    connection_string: Optional[str] = None
+
+
 DataSource = Annotated[
     Union[
         LocalFileSource,
@@ -83,6 +92,7 @@ DataSource = Annotated[
         DatabaseSource,
         KafkaSource,
         APISource,
+        AzureBlobSource,
     ],
     Field(discriminator="type"),
 ]

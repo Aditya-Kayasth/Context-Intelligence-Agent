@@ -6,7 +6,14 @@ from app.connectors.csv_connector import CSVConnector
 from app.connectors.parquet_connector import ParquetConnector
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.s3_connector import S3Connector
-from app.models.sources import DataSource, DatabaseSource, LocalFileSource, S3Source
+from app.connectors.blob_connector import BlobConnector
+from app.models.sources import (
+    AzureBlobSource,
+    DataSource,
+    DatabaseSource,
+    LocalFileSource,
+    S3Source,
+)
 
 
 def get_connector(source: DataSource) -> BaseConnector:
@@ -19,6 +26,8 @@ def get_connector(source: DataSource) -> BaseConnector:
         return S3Connector(source)
     if isinstance(source, DatabaseSource):
         return PostgresConnector(source)
+    if isinstance(source, AzureBlobSource):
+        return BlobConnector(source)
     raise NotImplementedError(
         f"No connector implemented for source type: {source.type!r}"  # type: ignore[union-attr]
     )
