@@ -39,8 +39,7 @@ jobs:
           docker buildx build \
             --push \
             -t $IMAGE \
-            -t $IMAGE_LATEST \
-            ./Context-Intelligence-Agent
+            -t $IMAGE_LATEST 
 
 
       - name: Deploy to Azure Container Apps
