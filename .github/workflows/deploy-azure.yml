@@ -35,9 +35,13 @@ jobs:
         run: |
           IMAGE="${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:${{ github.sha }}"
           IMAGE_LATEST="${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:latest"
-          docker build -t $IMAGE -t $IMAGE_LATEST ${{ env.BUILD_PATH }}
-          docker push $IMAGE
-          docker push $IMAGE_LATEST
+      
+          docker buildx build \
+            --push \
+            -t $IMAGE \
+            -t $IMAGE_LATEST \
+            ./Context-Intelligence-Agent
+
 
       - name: Deploy to Azure Container Apps
         run: |
