@@ -3,11 +3,27 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.routers import context, profile
+
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Graceful startup and shutdown for the Context Agent."""
+    logger.info("[START] Context Intelligence Agent starting")
+    yield
+    from app.cache.redis_cache import close_redis
+    logger.info("[STOP] Context Agent shutting down -- closing Redis")
+    await close_redis()
+
+
+# ── App factory ───────────────────────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,6 +35,7 @@ app = FastAPI(
     title="Context Intelligence Agent",
     description="Data ingestion gateway for the multi-agent architecture.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.include_router(profile.router)
@@ -29,6 +46,8 @@ app.include_router(context.router)
 async def health() -> dict:
     """Return service liveness status."""
     from app.config import settings
+    from app.cache.redis_cache import ContextCache
+    
     provider = str(getattr(settings, "llm_provider", "unknown"))
     model = ""
     if provider == "azure_openai":
@@ -40,10 +59,15 @@ async def health() -> dict:
     elif provider == "ollama":
         model = getattr(settings, "ollama_model", "")
 
+    cache = ContextCache()
+    redis_alive = await cache.ping()
+    await cache.close()
+
     return {
         "status": "healthy",
         "llm_provider": provider,
         "llm_model": model,
+        "redis_status": "online" if redis_alive else "offline (caching disabled)",
     }
 
 
