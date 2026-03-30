@@ -1,0 +1,87 @@
+name: Deploy Context Intelligence Agent to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AGENT_NAME: context-agent
+  TARGET_PORT: "8001"
+  RESOURCE_GROUP: rg-axiom-ai
+  CONTAINER_ENV: axiom-ai-env
+  # Dockerfile is inside the inner directory
+  DOCKER_CONTEXT: ./Context-Intelligence-Agent
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: |
+          echo ${{ secrets.REGISTRY_PASSWORD }} | docker login \
+            ${{ secrets.REGISTRY_LOGIN_SERVER }} \
+            -u ${{ secrets.REGISTRY_USERNAME }} \
+            --password-stdin
+
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE="${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:${{ github.sha }}"
+          IMAGE_LATEST="${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:latest"
+          docker build -t $IMAGE -t $IMAGE_LATEST ${{ env.DOCKER_CONTEXT }}
+          docker push $IMAGE
+          docker push $IMAGE_LATEST
+
+      - name: Deploy to Azure Container Apps
+        run: |
+          IMAGE="${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:${{ github.sha }}"
+
+          EXISTS=$(az containerapp show \
+            --name ${{ env.AGENT_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$EXISTS" ]; then
+            echo "🆕 Creating new Container App: ${{ env.AGENT_NAME }}"
+            az containerapp create \
+              --name ${{ env.AGENT_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --environment ${{ env.CONTAINER_ENV }} \
+              --image $IMAGE \
+              --target-port ${{ env.TARGET_PORT }} \
+              --ingress internal \
+              --cpu 0.5 \
+              --memory 1Gi \
+              --min-replicas 0 \
+              --max-replicas 5 \
+              --registry-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
+              --registry-username ${{ secrets.REGISTRY_USERNAME }} \
+              --registry-password ${{ secrets.REGISTRY_PASSWORD }} \
+              --env-vars \
+                "LLM_PROVIDER=openai" \
+                "OPENAI_API_KEY=secretref:openai-api-key" \
+                "PORT=${{ env.TARGET_PORT }}" \
+                "AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-conn" \
+              --secrets \
+                "openai-api-key=${{ secrets.OPENAI_API_KEY }}" \
+                "azure-storage-conn=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+          else
+            echo "🔄 Updating existing Container App: ${{ env.AGENT_NAME }}"
+            az containerapp update \
+              --name ${{ env.AGENT_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --image $IMAGE
+          fi
+
+      - name: Show Deployment Status
+        run: |
+          echo "✅ ${{ env.AGENT_NAME }} deployed (internal ingress only)"
+          echo "   Reachable at: http://${{ env.AGENT_NAME }} from within the Container Apps environment"
