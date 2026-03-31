@@ -1,4 +1,4 @@
-name: Deploy Orchestrator Agent to Azure
+name: Deploy Context Intelligence Agent to Azure
 
 on:
   push:
@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  AGENT_NAME: orchestrator-agent
-  TARGET_PORT: "8000"
+  AGENT_NAME: context-agent
+  TARGET_PORT: "8001"
   RESOURCE_GROUP: rg-axiom-ai
   CONTAINER_ENV: axiom-ai-env
 
@@ -15,11 +15,9 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # ── 1. Checkout code ────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Azure Login ─────────────────────────────────────────────────
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -35,13 +33,12 @@ jobs:
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./Context-Intelligence-Agent
           push: true
           tags: |
             ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:${{ github.sha }}
             ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:latest
 
-      # ── 5. Deploy to Azure Container Apps ───────────────────────────────
       - name: Deploy to Azure Container Apps
         run: |
           IMAGE="${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:${{ github.sha }}"
@@ -54,8 +51,7 @@ jobs:
 
           # Build Environment Variables and Secrets strings
           # Start with required ones
-          # Use short internal hostnames — ACA resolves these within the same environment
-          ENV_VARS="LLM_PROVIDER=openai PORT=${{ env.TARGET_PORT }} OPENAI_API_KEY=secretref:openai-api-key USE_DOCKER=false USE_EC2=false CORS_ORIGINS=* CONTEXT_AGENT_URL=http://context-agent SQL_AGENT_URL=http://sql-agent VIZ_AGENT_URL=http://viz-agent NLP_AGENT_URL=http://nlp-agent REPORT_AGENT_URL=http://report-agent"
+          ENV_VARS="LLM_PROVIDER=openai PORT=${{ env.TARGET_PORT }} OPENAI_API_KEY=secretref:openai-api-key"
           SECRETS="openai-api-key=${{ secrets.OPENAI_API_KEY }}"
 
           # Add Optional Azure Storage if secret exists
@@ -73,10 +69,10 @@ jobs:
               --environment ${{ env.CONTAINER_ENV }} \
               --image $IMAGE \
               --target-port ${{ env.TARGET_PORT }} \
-              --ingress external \
+              --ingress internal \
               --cpu 0.5 \
               --memory 1Gi \
-              --min-replicas 1 \
+              --min-replicas 0 \
               --max-replicas 5 \
               --registry-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
               --registry-username ${{ secrets.REGISTRY_USERNAME }} \
@@ -85,7 +81,7 @@ jobs:
               --secrets $SECRETS
           else
             echo "🔄 Updating existing Container App: ${{ env.AGENT_NAME }}"
-            # Update secrets first in case they were modified
+            # We update secrets first in case they were modified
             az containerapp secret set \
               --name ${{ env.AGENT_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -113,16 +109,7 @@ jobs:
             --readiness-probe-initial-delay 10 \
             --readiness-probe-period 15 2>/dev/null || echo "⚠️  Health probe flags not supported in this CLI version — configure manually in Azure Portal"
 
-      # ── 6. Print deployment URL ─────────────────────────────────────────
-      - name: Show Deployment URL
+      - name: Show Deployment Status
         run: |
-          URL=$(az containerapp show \
-            --name ${{ env.AGENT_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "============================================"
-          echo "✅ Orchestrator Agent deployed at:"
-          echo "   https://$URL"
-          echo "   Health: https://$URL/health"
-          echo "   Docs:   https://$URL/docs"
-          echo "============================================"
+          echo "✅ ${{ env.AGENT_NAME }} deployed (internal ingress only)"
+          echo "   Reachable at: http://${{ env.AGENT_NAME }} from within the Container Apps environment"
