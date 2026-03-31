@@ -33,7 +33,7 @@ jobs:
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
-          context: ./Context-Intelligence-Agent
+          context: ./
           push: true
           tags: |
             ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.AGENT_NAME }}:${{ github.sha }}

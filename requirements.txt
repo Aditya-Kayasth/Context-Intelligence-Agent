@@ -17,3 +17,4 @@ pydantic-settings
 pytest
 pytest-asyncio
 httpx
+azure-storage-blob
