@@ -18,6 +18,7 @@ _KEY_PREFIX = "cia"
 # Global Redis client singleton
 _redis_client: Optional[Redis] = None
 _redis_disabled: bool = False
+_memory_cache: dict[str, str] = {}  # Fallback memory cache
 
 async def get_redis_client() -> Optional[Redis]:
     """Return the global Redis client, or None if disabled."""
@@ -58,10 +59,10 @@ class ContextCache:
     """Async Redis-backed cache keyed by a SHA-256 hash of the source descriptor."""
 
     async def ping(self) -> bool:
-        """Check if Redis is alive. Returns False if offline or ping fails."""
+        """Check if Redis is alive. Continues working if fallback memory cache is used!"""
         client = await get_redis_client()
         if client is None:
-            return False
+            return True # Memory cache is always "alive"
         try:
             await client.ping()
             return True
@@ -92,9 +93,12 @@ class ContextCache:
         return f"{_KEY_PREFIX}:{source_type}:{digest}"
 
     async def get_context(self, key: str) -> Optional[ContextObject]:
-        """Return the cached ContextObject for key, or None on a miss or if Redis is offline."""
+        """Return the cached ContextObject for key, or None on a miss."""
         client = await get_redis_client()
         if client is None:
+            raw_mem = _memory_cache.get(key)
+            if raw_mem:
+                return ContextObject.model_validate_json(raw_mem)
             return None
         try:
             raw = await client.get(key)
@@ -108,10 +112,12 @@ class ContextCache:
     async def set_context(self, key: str, context: ContextObject) -> None:
         """Persist a ContextObject under key with the configured TTL. Bypasses if Redis is offline."""
         client = await get_redis_client()
+        serialised = context.model_dump_json()
         if client is None:
+            _memory_cache[key] = serialised
             return
+        
         try:
-            serialised = context.model_dump_json()
             await client.set(key, serialised, ex=settings.context_ttl_seconds)
         except Exception as exc:
             logger.warning("Error writing to Redis: %s", exc)
